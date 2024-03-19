@@ -1,33 +1,25 @@
-import { useEffect, useRef, useState } from "react";
-import "./App.css";
+import { useState } from "react";
 
-import init_core from "shared/shared";
-import { EventVariantHello, ViewModel } from "shared_types/types/shared_types";
+import { EventVariantHello } from "shared_types/types/shared_types";
 import { update, view } from "./app/core";
 
 function App() {
-  const [viewModel, setView] = useState(new ViewModel(""));
-
-  const initialized = useRef(false);
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-
-      init_core().then(() => setView(view()));
-    }
-  }, []);
-
-  console.log("App!");
+  const [viewModel, setView] = useState(view());
 
   return (
-    <>
-      <h1>{viewModel.message}</h1>
-      <div className="card">
-        <button onClick={() => update(new EventVariantHello(), setView)}>
-          Say hello
-        </button>
+    <main className="card bg-base-100 mx-auto my-10 w-96">
+      <div className="card prose p-4 shadow-xl">
+        <h1>{viewModel.message}</h1>
+        <p className="text-center">
+          <button
+            className="btn"
+            onClick={() => update(new EventVariantHello(), setView)}
+          >
+            Say hello
+          </button>
+        </p>
       </div>
-    </>
+    </main>
   );
 }
 

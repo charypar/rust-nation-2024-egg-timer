@@ -11,10 +11,13 @@
     "wasm:build": "cd ../shared && wasm-pack build --target web"
   },
   "dependencies": {
+    "@tailwindcss/typography": "^0.5.10",
+    "daisyui": "^4.7.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "shared": "file:../shared/pkg",
-    "shared_types": "file:../shared_types/generated/typescript"
+    "shared_types": "file:../shared_types/generated/typescript",
+    "tailwindcss": "^3.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
