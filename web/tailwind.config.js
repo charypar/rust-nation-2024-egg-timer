@@ -6,4 +6,7 @@ export default {
     extend: {},
   },
   plugins: [require("@tailwindcss/typography"), require("daisyui")],
+  daisyui: {
+    themes: ["dracula", "light", "dim", "night", "emerald"],
+  },
 };
