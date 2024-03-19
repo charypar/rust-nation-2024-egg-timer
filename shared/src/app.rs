@@ -3,16 +3,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Event {
-    Increment,
-    Decrement,
-    Reset,
+    Hello,
 }
 
 #[derive(Default)]
-pub struct Model {}
+pub struct Model {
+    message: Option<String>,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ViewModel {}
+pub struct ViewModel {
+    message: String,
+}
 
 #[cfg_attr(feature = "typegen", derive(crux_core::macros::Export))]
 #[derive(crux_core::macros::Effect)]
@@ -30,12 +32,23 @@ impl App for EggTimer {
     type ViewModel = ViewModel;
     type Capabilities = Capabilities;
 
-    fn update(&self, _event: Self::Event, _model: &mut Self::Model, caps: &Self::Capabilities) {
+    fn update(&self, event: Self::Event, model: &mut Self::Model, caps: &Self::Capabilities) {
+        match event {
+            Event::Hello => {
+                model.message = Some("Hello, World!".to_string());
+            }
+        }
         caps.render.render();
     }
 
-    fn view(&self, _model: &Self::Model) -> Self::ViewModel {
-        ViewModel {}
+    fn view(&self, model: &Self::Model) -> Self::ViewModel {
+        ViewModel {
+            message: model
+                .message
+                .as_ref()
+                .unwrap_or(&"Nothing to see".to_string())
+                .to_string(),
+        }
     }
 }
 
