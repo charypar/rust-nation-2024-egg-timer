@@ -1,0 +1,16 @@
+[workspace]
+members = ["shared", "shared_types"]
+resolver = "1"
+
+[workspace.package]
+authors = ["Viktor Charypar"]
+edition = "2021"
+repository = "https://github.com/charypar/rust-nation-2024-egg-timer/"
+license = "Apache-2.0"
+keywords = ["crux", "RustNation", "cross-platform-ui", "ffi", "wasm"]
+rust-version = "1.76.0"
+
+[workspace.dependencies]
+anyhow = "1.0.79"
+crux_core = "0.7.3"
+serde = "1.0.196"
