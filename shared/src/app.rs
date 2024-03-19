@@ -54,8 +54,23 @@ impl App for EggTimer {
 
 #[cfg(test)]
 mod tests {
+    use crux_core::testing::AppTester;
+    use pretty_assertions::assert_eq;
+
+    use crate::{EggTimer, Event, Model};
+
     #[test]
-    fn hello_world() {
-        assert!(true);
+    fn test_hello() {
+        let app_tester = AppTester::<EggTimer, _>::default();
+        let app = app_tester;
+        let mut model = Model::default();
+
+        let view = app.view(&model);
+        assert_eq!(view.message, "Nothing to see");
+
+        app.update(Event::Hello, &mut model);
+
+        let view = app.view(&model);
+        assert_eq!(view.message, "Hello, World!");
     }
 }
