@@ -68,7 +68,21 @@ impl App for EggTimer {
             }
             Event::ToggleRunning => todo!(),
             Event::Reset => todo!(),
-            Event::Tick => todo!(),
+            Event::Tick => {
+                if let Model::Running {
+                    goal_time,
+                    elapsed_time,
+                } = model
+                {
+                    *elapsed_time += 1;
+
+                    if *elapsed_time >= *goal_time {
+                        *model = Model::Finished {
+                            goal_time: *goal_time,
+                        };
+                    }
+                }
+            }
         };
 
         caps.render.render();
@@ -255,5 +269,31 @@ mod tests {
                 elapsed_time: 15
             }
         );
+    }
+
+    #[test]
+    fn tick() {
+        let app = AppTester::<EggTimer, _>::default();
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 0,
+        };
+
+        app.update(Event::Tick, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 1
+            }
+        );
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 29,
+        };
+
+        app.update(Event::Tick, &mut model);
+        assert_eq!(model, Model::Finished { goal_time: 30 });
     }
 }
