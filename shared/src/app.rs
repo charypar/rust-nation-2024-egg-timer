@@ -67,7 +67,20 @@ impl App for EggTimer {
                 }
             }
             Event::ToggleRunning => todo!(),
-            Event::Reset => todo!(),
+            Event::Reset => {
+                let goal_time = match model {
+                    Model::NotStarted { goal_time } => goal_time,
+                    Model::Running { goal_time, .. } => goal_time,
+                    Model::Paused { goal_time, .. } => goal_time,
+                    Model::Finished { goal_time } => goal_time,
+                };
+
+                *model = Model::NotStarted {
+                    goal_time: *goal_time,
+                };
+
+                // TODO stop the clock
+            }
             Event::Tick => {
                 if let Model::Running {
                     goal_time,
@@ -295,5 +308,18 @@ mod tests {
 
         app.update(Event::Tick, &mut model);
         assert_eq!(model, Model::Finished { goal_time: 30 });
+    }
+
+    #[test]
+    fn reset() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 27,
+            elapsed_time: 15,
+        };
+
+        app.update(Event::Reset, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 27 });
     }
 }
