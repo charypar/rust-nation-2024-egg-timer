@@ -1,16 +1,23 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import { process_event, view as rawView } from "shared/shared";
-import type { Effect, Event } from "shared_types/types/shared_types";
+import { handle_response, process_event, view as rawView } from "shared/shared";
 import {
-  EffectVariantRender,
-  ViewModel,
-  Request,
-} from "shared_types/types/shared_types";
-import {
-  BincodeSerializer,
   BincodeDeserializer,
+  BincodeSerializer,
 } from "shared_types/bincode/mod";
+import {
+  ClockOperationVariantStart,
+  ClockOperationVariantStop,
+  Effect,
+  EffectVariantRender,
+  EffectVariantWallClock,
+  Event,
+  Request,
+  ViewModel,
+} from "shared_types/types/shared_types";
+import { start, stop } from "./interval";
+import { ClockOutputVariantTick } from "shared_types/types/shared_types";
+import { ClockOutputVariantStopped } from "shared_types/types/shared_types";
 
 export function update(
   event: Event,
@@ -18,35 +25,84 @@ export function update(
 ) {
   console.log("Update with event:", event);
 
-  const serializer = new BincodeSerializer();
-  event.serialize(serializer);
+  const requests = processEvent(event);
+  processEffects(requests, callback);
+}
 
-  const effects = process_event(serializer.getBytes());
+// Internal
 
-  const requests = deserializeRequests(effects);
+function processEffects(
+  requests: Request[],
+  callback: Dispatch<SetStateAction<ViewModel>>,
+) {
   for (const { uuid, effect } of requests) {
     processEffect(uuid, effect, callback);
   }
 }
 
-export function view() {
-  const bytes = rawView();
-  return deserializeView(bytes);
-}
-
 function processEffect(
-  _uuid: number[],
+  uuid: number[],
   effect: Effect,
   callback: Dispatch<SetStateAction<ViewModel>>,
 ) {
-  console.log("Processing effect:", effect);
+  if (effect.constructor == EffectVariantRender) {
+    console.log("Render effect:", effect);
 
-  switch (effect.constructor) {
-    case EffectVariantRender: {
-      callback(deserializeView(rawView()));
-      break;
+    callback(view());
+  } else if (effect.constructor == EffectVariantWallClock) {
+    const clockOperation = (effect as EffectVariantWallClock).value;
+
+    console.log("Clock effect:", clockOperation);
+
+    if (clockOperation.constructor == ClockOperationVariantStart) {
+      const interval = (clockOperation as ClockOperationVariantStart).value;
+
+      start(uuid, interval, () => {
+        console.log("Timer tick");
+
+        const requests = handleResponse(uuid, new ClockOutputVariantTick());
+        processEffects(requests, callback);
+      });
+    } else if (clockOperation.constructor == ClockOperationVariantStop) {
+      const id = stop();
+
+      if (id !== null) {
+        const requests = handleResponse(id, new ClockOutputVariantStopped());
+        processEffects(requests, callback);
+      }
     }
   }
+}
+
+// Serialization shims
+
+function processEvent(event: Event): Request[] {
+  const serializer = new BincodeSerializer();
+  event.serialize(serializer);
+
+  const requestBytes = process_event(serializer.getBytes());
+
+  return deserializeRequests(requestBytes);
+}
+
+type Output = ClockOutputVariantTick | ClockOutputVariantStopped;
+
+function handleResponse(uuid: number[], value: Output): Request[] {
+  const serializer = new BincodeSerializer();
+  value.serialize(serializer);
+
+  const request_bytes = handle_response(
+    new Uint8Array(uuid),
+    serializer.getBytes(),
+  );
+
+  return deserializeRequests(request_bytes);
+}
+
+export function view(): ViewModel {
+  const bytes = rawView();
+
+  return ViewModel.deserialize(new BincodeDeserializer(bytes));
 }
 
 function deserializeRequests(bytes: Uint8Array): Request[] {
@@ -58,8 +114,4 @@ function deserializeRequests(bytes: Uint8Array): Request[] {
     requests.push(request);
   }
   return requests;
-}
-
-function deserializeView(bytes: Uint8Array): ViewModel {
-  return ViewModel.deserialize(new BincodeDeserializer(bytes));
 }
