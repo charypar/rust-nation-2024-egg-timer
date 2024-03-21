@@ -5,18 +5,18 @@ use crux_core::{
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
-struct WallClock<Ev> {
+pub struct WallClock<Ev> {
     context: CapabilityContext<ClockOperation, Ev>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-enum ClockOperation {
+pub enum ClockOperation {
     Start(usize),
     Stop,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-enum ClockOutput {
+pub enum ClockOutput {
     Tick,
     Stopped,
 }
@@ -25,15 +25,17 @@ impl Operation for ClockOperation {
     type Output = ClockOutput;
 }
 
-impl<Ev> WallClock<Ev> {
+impl<Ev> WallClock<Ev>
+where
+    Ev: 'static + Send,
+{
     pub fn new(context: CapabilityContext<ClockOperation, Ev>) -> Self {
         Self { context }
     }
 
-    pub fn start<E>(&self, interval: usize, event: E)
+    pub fn start(&self, interval: usize, event: Ev)
     where
-        E: Fn() -> Ev + Send + Sync + 'static,
-        Ev: 'static,
+        Ev: Clone,
     {
         self.context.spawn({
             let ctx = self.context.clone();
@@ -42,10 +44,20 @@ impl<Ev> WallClock<Ev> {
                 let mut subscription = ctx.stream_from_shell(ClockOperation::Start(interval));
 
                 while let Some(ClockOutput::Tick) = subscription.next().await {
-                    ctx.update_app(event());
+                    ctx.update_app(event.clone());
                 }
             }
         });
+    }
+
+    pub fn stop(&self) {
+        self.context.spawn({
+            let ctx = self.context.clone();
+
+            async move {
+                ctx.notify_shell(ClockOperation::Stop).await;
+            }
+        })
     }
 }
 
