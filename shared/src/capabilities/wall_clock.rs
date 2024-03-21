@@ -11,7 +11,7 @@ pub struct WallClock<Ev> {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum ClockOperation {
-    Start(usize),
+    Start(u32),
     Stop,
 }
 
@@ -33,7 +33,7 @@ where
         Self { context }
     }
 
-    pub fn start(&self, interval: usize, event: Ev)
+    pub fn start(&self, interval: u32, event: Ev)
     where
         Ev: Clone,
     {
