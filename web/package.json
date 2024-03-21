@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npm  run wasm:build && vite",
+    "dev": "npm run wasm:build && vite",
     "build": "npm run wasm:build && tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
@@ -12,11 +12,12 @@
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.10",
+    "clsx": "^2.1.0",
     "daisyui": "^4.7.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "shared": "file:../shared/pkg",
-    "shared_types": "file:../shared_types/generated/typescript",
+    "shared": "link:../shared/pkg",
+    "shared_types": "link:../shared_types/generated/typescript",
     "tailwindcss": "^3.4.1"
   },
   "devDependencies": {
