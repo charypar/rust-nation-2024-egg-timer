@@ -56,8 +56,16 @@ impl App for EggTimer {
 
     fn update(&self, event: Self::Event, model: &mut Self::Model, caps: &Self::Capabilities) {
         match event {
-            Event::Increase => todo!(),
-            Event::Decrease => todo!(),
+            Event::Increase => {
+                if let Model::NotStarted { goal_time } = model {
+                    *goal_time += 10;
+                }
+            }
+            Event::Decrease => {
+                if let Model::NotStarted { goal_time } = model {
+                    *goal_time = goal_time.saturating_sub(10);
+                }
+            }
             Event::ToggleRunning => todo!(),
             Event::Reset => todo!(),
             Event::Tick => todo!(),
@@ -210,6 +218,41 @@ mod tests {
                 can_edit: false,
                 can_toggle_runnning: false,
                 can_reset: true
+            }
+        );
+    }
+
+    #[test]
+    fn set_goal_time() {
+        let app = AppTester::<EggTimer, _>::default();
+        let mut model = Model::NotStarted { goal_time: 30 };
+
+        app.update(Event::Increase, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 40 });
+
+        app.update(Event::Decrease, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 30 });
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 15,
+        };
+
+        app.update(Event::Increase, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 15
+            }
+        );
+
+        app.update(Event::Decrease, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 15
             }
         );
     }
