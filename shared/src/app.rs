@@ -1,6 +1,8 @@
 use crux_core::{render::Render, App};
 use serde::{Deserialize, Serialize};
 
+use crate::capabilities::wall_clock::WallClock;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Event {
     Increase,
@@ -42,6 +44,7 @@ pub struct ViewModel {
 #[derive(crux_core::macros::Effect)]
 #[effect(app = "EggTimer")]
 pub struct Capabilities {
+    wall_clock: WallClock<Event>,
     render: Render<Event>,
 }
 
@@ -66,7 +69,41 @@ impl App for EggTimer {
                     *goal_time = goal_time.saturating_sub(10);
                 }
             }
-            Event::ToggleRunning => todo!(),
+            Event::ToggleRunning => match model {
+                Model::NotStarted { goal_time } => {
+                    *model = Model::Running {
+                        goal_time: *goal_time,
+                        elapsed_time: 0,
+                    };
+
+                    caps.wall_clock.start(1, Event::Tick);
+                }
+                Model::Running {
+                    goal_time,
+                    elapsed_time,
+                } => {
+                    *model = Model::Paused {
+                        goal_time: *goal_time,
+                        elapsed_time: *elapsed_time,
+                    };
+
+                    caps.wall_clock.stop();
+                }
+                Model::Paused {
+                    goal_time,
+                    elapsed_time,
+                } => {
+                    *model = Model::Running {
+                        goal_time: *goal_time,
+                        elapsed_time: *elapsed_time,
+                    };
+
+                    caps.wall_clock.start(1, Event::Tick);
+                }
+                Model::Finished { .. } => {
+                    // Can't toggle a finished timer
+                }
+            },
             Event::Reset => {
                 let goal_time = match model {
                     Model::NotStarted { goal_time } => goal_time,
@@ -79,7 +116,7 @@ impl App for EggTimer {
                     goal_time: *goal_time,
                 };
 
-                // TODO stop the clock
+                caps.wall_clock.stop();
             }
             Event::Tick => {
                 if let Model::Running {
@@ -93,6 +130,8 @@ impl App for EggTimer {
                         *model = Model::Finished {
                             goal_time: *goal_time,
                         };
+
+                        caps.wall_clock.stop();
                     }
                 }
             }
@@ -168,7 +207,9 @@ mod tests {
     use crux_core::testing::AppTester;
     use pretty_assertions::assert_eq;
 
-    use super::{EggTimer, Event, Model};
+    use crate::capabilities::wall_clock::{ClockOperation, ClockOutput};
+
+    use super::{Effect, EggTimer, Event, Model};
 
     #[test]
     fn view_model() {
@@ -321,5 +362,114 @@ mod tests {
 
         app.update(Event::Reset, &mut model);
         assert_eq!(model, Model::NotStarted { goal_time: 27 });
+    }
+
+    #[test]
+    fn starting_timer() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::NotStarted { goal_time: 30 };
+
+        let update = app.update(Event::ToggleRunning, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 0
+            }
+        );
+
+        let Some(Effect::WallClock(mut req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Start(interval) = req.operation else {
+            panic!("Expected start operation");
+        };
+        assert_eq!(interval, 1);
+
+        let update = app
+            .resolve(&mut req, ClockOutput::Tick)
+            .expect("to resolve");
+
+        assert_eq!(update.events.len(), 1);
+        app.update(update.events[0].clone(), &mut model);
+
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 1
+            }
+        );
+    }
+
+    #[test]
+    fn pausing_timer() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 15,
+        };
+
+        let update = app.update(Event::ToggleRunning, &mut model);
+        assert_eq!(
+            model,
+            Model::Paused {
+                goal_time: 30,
+                elapsed_time: 15
+            }
+        );
+
+        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Stop = req.operation else {
+            panic!("Expected stop operation");
+        };
+    }
+
+    #[test]
+    fn stops_the_clock_when_finished() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 29,
+        };
+
+        let update = app.update(Event::Tick, &mut model);
+        assert_eq!(model, Model::Finished { goal_time: 30 });
+
+        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Stop = req.operation else {
+            panic!("Expected stop operation");
+        };
+    }
+
+    #[test]
+    fn stops_the_clock_when_reset() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 15,
+        };
+
+        let update = app.update(Event::Reset, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 30 });
+
+        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Stop = req.operation else {
+            panic!("Expected stop operation");
+        };
     }
 }
