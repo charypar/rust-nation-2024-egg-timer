@@ -6,18 +6,12 @@ import {
   BincodeSerializer,
 } from "shared_types/bincode/mod";
 import {
-  ClockOperationVariantStart,
-  ClockOperationVariantStop,
   Effect,
   EffectVariantRender,
-  EffectVariantWallClock,
   Event,
   Request,
   ViewModel,
 } from "shared_types/types/shared_types";
-import { start, stop } from "./interval";
-import { ClockOutputVariantTick } from "shared_types/types/shared_types";
-import { ClockOutputVariantStopped } from "shared_types/types/shared_types";
 
 export function update(
   event: Event,
@@ -41,7 +35,7 @@ function processEffects(
 }
 
 function processEffect(
-  uuid: number[],
+  _uuid: number[],
   effect: Effect,
   callback: Dispatch<SetStateAction<ViewModel>>,
 ) {
@@ -49,28 +43,6 @@ function processEffect(
     console.log("Render effect:", effect);
 
     callback(view());
-  } else if (effect.constructor == EffectVariantWallClock) {
-    const clockOperation = (effect as EffectVariantWallClock).value;
-
-    console.log("Clock effect:", clockOperation);
-
-    if (clockOperation.constructor == ClockOperationVariantStart) {
-      const interval = (clockOperation as ClockOperationVariantStart).value;
-
-      start(uuid, interval, () => {
-        console.log("Timer tick");
-
-        const requests = handleResponse(uuid, new ClockOutputVariantTick());
-        processEffects(requests, callback);
-      });
-    } else if (clockOperation.constructor == ClockOperationVariantStop) {
-      const id = stop();
-
-      if (id !== null) {
-        const requests = handleResponse(id, new ClockOutputVariantStopped());
-        processEffects(requests, callback);
-      }
-    }
   }
 }
 
@@ -85,7 +57,7 @@ function processEvent(event: Event): Request[] {
   return deserializeRequests(requestBytes);
 }
 
-type Output = ClockOutputVariantTick | ClockOutputVariantStopped;
+type Output = { serialize(serializer: BincodeSerializer): void };
 
 function handleResponse(uuid: number[], value: Output): Request[] {
   const serializer = new BincodeSerializer();
