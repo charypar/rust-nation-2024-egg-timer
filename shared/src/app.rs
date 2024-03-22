@@ -61,8 +61,7 @@ mod tests {
 
     #[test]
     fn test_hello() {
-        let app_tester = AppTester::<EggTimer, _>::default();
-        let app = app_tester;
+        let app = AppTester::<EggTimer, _>::default();
         let mut model = Model::default();
 
         let view = app.view(&model);
