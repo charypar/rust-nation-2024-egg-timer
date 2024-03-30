@@ -1,25 +1,50 @@
 use crux_core::{render::Render, App};
 use serde::{Deserialize, Serialize};
 
+use crate::capabilities::wall_clock::WallClock;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Event {
-    Hello,
+    Increase,
+    Decrease,
+    ToggleRunning,
+    Reset,
+    #[serde(skip)]
+    Tick,
 }
 
-#[derive(Default)]
-pub struct Model {
-    message: Option<String>,
+#[derive(Clone, PartialEq, Debug)]
+pub enum Model {
+    NotStarted { goal_time: u32 },
+    Running { goal_time: u32, elapsed_time: u32 },
+    Paused { goal_time: u32, elapsed_time: u32 },
+    Finished { goal_time: u32 },
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+impl Default for Model {
+    fn default() -> Self {
+        Model::NotStarted { goal_time: 30 }
+    }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ViewModel {
-    message: String,
+    minutes: u32,
+    seconds: u32,
+    percentage: u32,
+    running: bool,
+    finished: bool,
+    can_edit: bool,
+    can_toggle_runnning: bool,
+    can_reset: bool,
 }
 
 #[cfg_attr(feature = "typegen", derive(crux_core::macros::Export))]
 #[derive(crux_core::macros::Effect)]
 #[effect(app = "EggTimer")]
 pub struct Capabilities {
+    wall_clock: WallClock<Event>,
     render: Render<Event>,
 }
 
@@ -34,20 +59,145 @@ impl App for EggTimer {
 
     fn update(&self, event: Self::Event, model: &mut Self::Model, caps: &Self::Capabilities) {
         match event {
-            Event::Hello => {
-                model.message = Some("Hello, World!".to_string());
+            Event::Increase => {
+                if let Model::NotStarted { goal_time } = model {
+                    *goal_time += 10;
+                }
             }
-        }
+            Event::Decrease => {
+                if let Model::NotStarted { goal_time } = model {
+                    *goal_time = goal_time.saturating_sub(10);
+                }
+            }
+            Event::ToggleRunning => match model {
+                Model::NotStarted { goal_time } => {
+                    *model = Model::Running {
+                        goal_time: *goal_time,
+                        elapsed_time: 0,
+                    };
+
+                    caps.wall_clock.start(1, Event::Tick);
+                }
+                Model::Running {
+                    goal_time,
+                    elapsed_time,
+                } => {
+                    *model = Model::Paused {
+                        goal_time: *goal_time,
+                        elapsed_time: *elapsed_time,
+                    };
+
+                    caps.wall_clock.stop();
+                }
+                Model::Paused {
+                    goal_time,
+                    elapsed_time,
+                } => {
+                    *model = Model::Running {
+                        goal_time: *goal_time,
+                        elapsed_time: *elapsed_time,
+                    };
+
+                    caps.wall_clock.start(1, Event::Tick);
+                }
+                Model::Finished { .. } => {
+                    // Can't toggle a finished timer
+                }
+            },
+            Event::Reset => {
+                let goal_time = match model {
+                    Model::NotStarted { goal_time } => goal_time,
+                    Model::Running { goal_time, .. } => goal_time,
+                    Model::Paused { goal_time, .. } => goal_time,
+                    Model::Finished { goal_time } => goal_time,
+                };
+
+                *model = Model::NotStarted {
+                    goal_time: *goal_time,
+                };
+
+                caps.wall_clock.stop();
+            }
+            Event::Tick => {
+                if let Model::Running {
+                    goal_time,
+                    elapsed_time,
+                } = model
+                {
+                    *elapsed_time += 1;
+
+                    if *elapsed_time >= *goal_time {
+                        *model = Model::Finished {
+                            goal_time: *goal_time,
+                        };
+
+                        caps.wall_clock.stop();
+                    }
+                }
+            }
+        };
+
         caps.render.render();
     }
 
     fn view(&self, model: &Self::Model) -> Self::ViewModel {
-        ViewModel {
-            message: model
-                .message
-                .as_ref()
-                .unwrap_or(&"Nothing to see".to_string())
-                .to_string(),
+        match model {
+            Model::NotStarted { goal_time } => ViewModel {
+                minutes: goal_time / 60,
+                seconds: goal_time % 60,
+                percentage: 100,
+                running: false,
+                finished: false,
+                can_edit: true,
+                can_toggle_runnning: true,
+                can_reset: false,
+            },
+            Model::Running {
+                goal_time,
+                elapsed_time,
+            } => {
+                let remaining_time = goal_time.saturating_sub(*elapsed_time);
+                let percentage = (remaining_time as f64 / *goal_time as f64 * 100.0) as u32;
+
+                ViewModel {
+                    minutes: remaining_time / 60,
+                    seconds: remaining_time % 60,
+                    percentage,
+                    running: true,
+                    finished: false,
+                    can_edit: false,
+                    can_toggle_runnning: true,
+                    can_reset: true,
+                }
+            }
+            Model::Paused {
+                goal_time,
+                elapsed_time,
+            } => {
+                let remaining_time = goal_time.saturating_sub(*elapsed_time);
+                let percentage = (remaining_time as f64 / *goal_time as f64 * 100.0) as u32;
+
+                ViewModel {
+                    minutes: remaining_time / 60,
+                    seconds: remaining_time % 60,
+                    percentage,
+                    running: false,
+                    finished: false,
+                    can_edit: false,
+                    can_toggle_runnning: true,
+                    can_reset: true,
+                }
+            }
+            Model::Finished { .. } => ViewModel {
+                minutes: 0,
+                seconds: 0,
+                percentage: 100,
+                running: false,
+                finished: true,
+                can_edit: false,
+                can_toggle_runnning: false,
+                can_reset: true,
+            },
         }
     }
 }
@@ -57,20 +207,269 @@ mod tests {
     use crux_core::testing::AppTester;
     use pretty_assertions::assert_eq;
 
-    use crate::{EggTimer, Event, Model};
+    use crate::capabilities::wall_clock::{ClockOperation, ClockOutput};
+
+    use super::{Effect, EggTimer, Event, Model};
 
     #[test]
-    fn test_hello() {
-        let app_tester = AppTester::<EggTimer, _>::default();
-        let app = app_tester;
-        let mut model = Model::default();
+    fn view_model() {
+        let app = AppTester::<EggTimer, _>::default();
 
-        let view = app.view(&model);
-        assert_eq!(view.message, "Nothing to see");
+        let model = Model::NotStarted { goal_time: 30 };
+        let view_model = app.view(&model);
 
-        app.update(Event::Hello, &mut model);
+        assert_eq!(
+            view_model,
+            crate::ViewModel {
+                minutes: 0,
+                seconds: 30,
+                percentage: 100,
+                running: false,
+                finished: false,
+                can_edit: true,
+                can_toggle_runnning: true,
+                can_reset: false,
+            }
+        );
 
-        let view = app.view(&model);
-        assert_eq!(view.message, "Hello, World!");
+        let model = Model::Running {
+            goal_time: 80,
+            elapsed_time: 10,
+        };
+        let view_model = app.view(&model);
+
+        assert_eq!(
+            view_model,
+            crate::ViewModel {
+                minutes: 1,
+                seconds: 10,
+                percentage: 87,
+                running: true,
+                finished: false,
+                can_edit: false,
+                can_toggle_runnning: true,
+                can_reset: true
+            }
+        );
+
+        let model = Model::Paused {
+            goal_time: 70,
+            elapsed_time: 10,
+        };
+        let view_model = app.view(&model);
+
+        assert_eq!(
+            view_model,
+            crate::ViewModel {
+                minutes: 1,
+                seconds: 0,
+                percentage: 85,
+                running: false,
+                finished: false,
+                can_edit: false,
+                can_toggle_runnning: true,
+                can_reset: true
+            }
+        );
+
+        let model = Model::Finished { goal_time: 30 };
+        let view_model = app.view(&model);
+
+        assert_eq!(
+            view_model,
+            crate::ViewModel {
+                minutes: 0,
+                seconds: 0,
+                percentage: 100,
+                running: false,
+                finished: true,
+                can_edit: false,
+                can_toggle_runnning: false,
+                can_reset: true
+            }
+        );
+    }
+
+    #[test]
+    fn set_goal_time() {
+        let app = AppTester::<EggTimer, _>::default();
+        let mut model = Model::NotStarted { goal_time: 30 };
+
+        app.update(Event::Increase, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 40 });
+
+        app.update(Event::Decrease, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 30 });
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 15,
+        };
+
+        app.update(Event::Increase, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 15
+            }
+        );
+
+        app.update(Event::Decrease, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 15
+            }
+        );
+    }
+
+    #[test]
+    fn tick() {
+        let app = AppTester::<EggTimer, _>::default();
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 0,
+        };
+
+        app.update(Event::Tick, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 1
+            }
+        );
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 29,
+        };
+
+        app.update(Event::Tick, &mut model);
+        assert_eq!(model, Model::Finished { goal_time: 30 });
+    }
+
+    #[test]
+    fn reset() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 27,
+            elapsed_time: 15,
+        };
+
+        app.update(Event::Reset, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 27 });
+    }
+
+    #[test]
+    fn starting_timer() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::NotStarted { goal_time: 30 };
+
+        let update = app.update(Event::ToggleRunning, &mut model);
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 0
+            }
+        );
+
+        let Some(Effect::WallClock(mut req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Start(interval) = req.operation else {
+            panic!("Expected start operation");
+        };
+        assert_eq!(interval, 1);
+
+        let update = app
+            .resolve(&mut req, ClockOutput::Tick)
+            .expect("to resolve");
+
+        assert_eq!(update.events.len(), 1);
+        app.update(update.events[0].clone(), &mut model);
+
+        assert_eq!(
+            model,
+            Model::Running {
+                goal_time: 30,
+                elapsed_time: 1
+            }
+        );
+    }
+
+    #[test]
+    fn pausing_timer() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 15,
+        };
+
+        let update = app.update(Event::ToggleRunning, &mut model);
+        assert_eq!(
+            model,
+            Model::Paused {
+                goal_time: 30,
+                elapsed_time: 15
+            }
+        );
+
+        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Stop = req.operation else {
+            panic!("Expected stop operation");
+        };
+    }
+
+    #[test]
+    fn stops_the_clock_when_finished() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 29,
+        };
+
+        let update = app.update(Event::Tick, &mut model);
+        assert_eq!(model, Model::Finished { goal_time: 30 });
+
+        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Stop = req.operation else {
+            panic!("Expected stop operation");
+        };
+    }
+
+    #[test]
+    fn stops_the_clock_when_reset() {
+        let app = AppTester::<EggTimer, _>::default();
+
+        let mut model = Model::Running {
+            goal_time: 30,
+            elapsed_time: 15,
+        };
+
+        let update = app.update(Event::Reset, &mut model);
+        assert_eq!(model, Model::NotStarted { goal_time: 30 });
+
+        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
+            panic!("Expected wall clock effect");
+        };
+
+        let ClockOperation::Stop = req.operation else {
+            panic!("Expected stop operation");
+        };
     }
 }
