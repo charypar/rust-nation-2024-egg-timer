@@ -1,9 +1,15 @@
-use crux_core::{render::Render, App};
+use crux_core::{
+    macros::effect,
+    render::{render, RenderOperation},
+    App, Command,
+};
+use facet::Facet;
 use serde::{Deserialize, Serialize};
 
-use crate::capabilities::wall_clock::WallClock;
+use crate::capabilities::wall_clock::{self, ClockOperation};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Facet, Serialize, Deserialize, Clone, Debug)]
+#[repr(C)]
 pub enum Event {
     Increase,
     Decrease,
@@ -27,8 +33,10 @@ impl Default for Model {
     }
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Facet, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[facet(rename_all = "camelCase")]
+#[repr(C)]
 pub struct ViewModel {
     minutes: u32,
     seconds: u32,
@@ -40,12 +48,10 @@ pub struct ViewModel {
     can_reset: bool,
 }
 
-#[cfg_attr(feature = "typegen", derive(crux_core::macros::Export))]
-#[derive(crux_core::macros::Effect)]
-#[effect(app = "EggTimer")]
-pub struct Capabilities {
-    wall_clock: WallClock<Event>,
-    render: Render<Event>,
+#[effect(facet_typegen)]
+pub enum Effect {
+    Render(RenderOperation),
+    WallClock(ClockOperation),
 }
 
 #[derive(Default)]
@@ -55,19 +61,23 @@ impl App for EggTimer {
     type Event = Event;
     type Model = Model;
     type ViewModel = ViewModel;
-    type Capabilities = Capabilities;
+    type Effect = Effect;
 
-    fn update(&self, event: Self::Event, model: &mut Self::Model, caps: &Self::Capabilities) {
-        match event {
+    fn update(&self, event: Self::Event, model: &mut Self::Model) -> Command<Effect, Event> {
+        let clock_command = match event {
             Event::Increase => {
                 if let Model::NotStarted { goal_time } = model {
                     *goal_time += 10;
                 }
+
+                Command::done()
             }
             Event::Decrease => {
                 if let Model::NotStarted { goal_time } = model {
                     *goal_time = goal_time.saturating_sub(10);
                 }
+
+                Command::done()
             }
             Event::ToggleRunning => match model {
                 Model::NotStarted { goal_time } => {
@@ -76,7 +86,7 @@ impl App for EggTimer {
                         elapsed_time: 0,
                     };
 
-                    caps.wall_clock.start(1, Event::Tick);
+                    wall_clock::start(1).then_send(|_| Event::Tick)
                 }
                 Model::Running {
                     goal_time,
@@ -87,7 +97,7 @@ impl App for EggTimer {
                         elapsed_time: *elapsed_time,
                     };
 
-                    caps.wall_clock.stop();
+                    wall_clock::stop()
                 }
                 Model::Paused {
                     goal_time,
@@ -98,10 +108,11 @@ impl App for EggTimer {
                         elapsed_time: *elapsed_time,
                     };
 
-                    caps.wall_clock.start(1, Event::Tick);
+                    wall_clock::start(1).then_send(|_| Event::Tick)
                 }
                 Model::Finished { .. } => {
                     // Can't toggle a finished timer
+                    Command::done()
                 }
             },
             Event::Reset => {
@@ -116,7 +127,7 @@ impl App for EggTimer {
                     goal_time: *goal_time,
                 };
 
-                caps.wall_clock.stop();
+                wall_clock::stop()
             }
             Event::Tick => {
                 if let Model::Running {
@@ -131,13 +142,17 @@ impl App for EggTimer {
                             goal_time: *goal_time,
                         };
 
-                        caps.wall_clock.stop();
+                        wall_clock::stop()
+                    } else {
+                        Command::done()
                     }
+                } else {
+                    Command::done()
                 }
             }
         };
 
-        caps.render.render();
+        clock_command.and(render())
     }
 
     fn view(&self, model: &Self::Model) -> Self::ViewModel {
@@ -204,16 +219,16 @@ impl App for EggTimer {
 
 #[cfg(test)]
 mod tests {
-    use crux_core::testing::AppTester;
-    use pretty_assertions::assert_eq;
+    use crux_core::App as _;
+    // use pretty_assertions::assert_eq;
 
     use crate::capabilities::wall_clock::{ClockOperation, ClockOutput};
 
-    use super::{Effect, EggTimer, Event, Model};
+    use super::{EggTimer, Event, Model};
 
     #[test]
     fn view_model() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
 
         let model = Model::NotStarted { goal_time: 30 };
         let view_model = app.view(&model);
@@ -292,13 +307,17 @@ mod tests {
 
     #[test]
     fn set_goal_time() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
         let mut model = Model::NotStarted { goal_time: 30 };
 
-        app.update(Event::Increase, &mut model);
+        let mut cmd = app.update(Event::Increase, &mut model);
+        cmd.expect_one_effect().expect_render();
+
         assert_eq!(model, Model::NotStarted { goal_time: 40 });
 
-        app.update(Event::Decrease, &mut model);
+        let mut cmd = app.update(Event::Decrease, &mut model);
+        cmd.expect_one_effect().expect_render();
+
         assert_eq!(model, Model::NotStarted { goal_time: 30 });
 
         let mut model = Model::Running {
@@ -306,7 +325,9 @@ mod tests {
             elapsed_time: 15,
         };
 
-        app.update(Event::Increase, &mut model);
+        let mut cmd = app.update(Event::Increase, &mut model);
+        cmd.expect_one_effect().expect_render();
+
         assert_eq!(
             model,
             Model::Running {
@@ -315,7 +336,9 @@ mod tests {
             }
         );
 
-        app.update(Event::Decrease, &mut model);
+        let mut cmd = app.update(Event::Decrease, &mut model);
+        cmd.expect_one_effect().expect_render();
+
         assert_eq!(
             model,
             Model::Running {
@@ -327,13 +350,15 @@ mod tests {
 
     #[test]
     fn tick() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
         let mut model = Model::Running {
             goal_time: 30,
             elapsed_time: 0,
         };
 
-        app.update(Event::Tick, &mut model);
+        let mut cmd = app.update(Event::Tick, &mut model);
+        cmd.expect_one_effect().expect_render();
+
         assert_eq!(
             model,
             Model::Running {
@@ -347,30 +372,43 @@ mod tests {
             elapsed_time: 29,
         };
 
-        app.update(Event::Tick, &mut model);
+        let mut cmd = app.update(Event::Tick, &mut model);
+        let clock_req = cmd.expect_effect().expect_wall_clock();
+        assert_eq!(clock_req.operation, ClockOperation::Stop);
+
+        cmd.expect_one_effect().expect_render();
+
         assert_eq!(model, Model::Finished { goal_time: 30 });
     }
 
     #[test]
     fn reset() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
 
         let mut model = Model::Running {
             goal_time: 27,
             elapsed_time: 15,
         };
 
-        app.update(Event::Reset, &mut model);
+        let mut cmd = app.update(Event::Reset, &mut model);
+
+        let clock_req = cmd.expect_effect().expect_wall_clock();
+        assert_eq!(clock_req.operation, ClockOperation::Stop);
+
+        cmd.expect_one_effect().expect_render();
+
         assert_eq!(model, Model::NotStarted { goal_time: 27 });
+
+        cmd.expect_no_effect_or_events();
     }
 
     #[test]
     fn starting_timer() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
 
         let mut model = Model::NotStarted { goal_time: 30 };
 
-        let update = app.update(Event::ToggleRunning, &mut model);
+        let mut cmd = app.update(Event::ToggleRunning, &mut model);
         assert_eq!(
             model,
             Model::Running {
@@ -379,21 +417,19 @@ mod tests {
             }
         );
 
-        let Some(Effect::WallClock(mut req)) = update.into_effects().next() else {
-            panic!("Expected wall clock effect");
-        };
+        cmd.expect_no_events();
+        let mut clock_req = cmd.expect_effect().expect_wall_clock();
 
-        let ClockOperation::Start(interval) = req.operation else {
+        let ClockOperation::Start(interval) = clock_req.operation else {
             panic!("Expected start operation");
         };
         assert_eq!(interval, 1);
 
-        let update = app
-            .resolve(&mut req, ClockOutput::Tick)
-            .expect("to resolve");
+        clock_req.resolve(ClockOutput::Tick).expect("to resolve");
 
-        assert_eq!(update.events.len(), 1);
-        app.update(update.events[0].clone(), &mut model);
+        let event = cmd.expect_one_event();
+        let mut cmd = app.update(event, &mut model);
+        cmd.expect_one_effect().expect_render();
 
         assert_eq!(
             model,
@@ -406,14 +442,14 @@ mod tests {
 
     #[test]
     fn pausing_timer() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
 
         let mut model = Model::Running {
             goal_time: 30,
             elapsed_time: 15,
         };
 
-        let update = app.update(Event::ToggleRunning, &mut model);
+        let mut cmd = app.update(Event::ToggleRunning, &mut model);
         assert_eq!(
             model,
             Model::Paused {
@@ -422,54 +458,60 @@ mod tests {
             }
         );
 
-        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
-            panic!("Expected wall clock effect");
-        };
+        cmd.expect_no_events();
 
-        let ClockOperation::Stop = req.operation else {
+        let clock_req = cmd.expect_effect().expect_wall_clock();
+        cmd.expect_effect().expect_render();
+
+        let ClockOperation::Stop = clock_req.operation else {
             panic!("Expected stop operation");
         };
+
+        cmd.expect_done();
     }
 
     #[test]
     fn stops_the_clock_when_finished() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
 
         let mut model = Model::Running {
             goal_time: 30,
             elapsed_time: 29,
         };
 
-        let update = app.update(Event::Tick, &mut model);
+        let mut cmd = app.update(Event::Tick, &mut model);
         assert_eq!(model, Model::Finished { goal_time: 30 });
 
-        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
-            panic!("Expected wall clock effect");
-        };
+        cmd.expect_no_events();
+        let clock_req = cmd.expect_effect().expect_wall_clock();
 
-        let ClockOperation::Stop = req.operation else {
+        let ClockOperation::Stop = clock_req.operation else {
             panic!("Expected stop operation");
         };
+
+        cmd.expect_one_effect().expect_render();
     }
 
     #[test]
     fn stops_the_clock_when_reset() {
-        let app = AppTester::<EggTimer, _>::default();
+        let app = EggTimer;
 
         let mut model = Model::Running {
             goal_time: 30,
             elapsed_time: 15,
         };
 
-        let update = app.update(Event::Reset, &mut model);
+        let mut cmd = app.update(Event::Reset, &mut model);
         assert_eq!(model, Model::NotStarted { goal_time: 30 });
 
-        let Some(Effect::WallClock(req)) = update.into_effects().next() else {
-            panic!("Expected wall clock effect");
-        };
+        cmd.expect_no_events();
+        let clock_req = cmd.expect_effect().expect_wall_clock();
 
-        let ClockOperation::Stop = req.operation else {
+        let ClockOperation::Stop = clock_req.operation else {
             panic!("Expected stop operation");
         };
+
+        cmd.expect_one_effect().expect_render();
+        cmd.expect_done();
     }
 }

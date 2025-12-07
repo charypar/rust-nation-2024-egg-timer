@@ -1,21 +1,19 @@
-use crux_core::{
-    capability::{CapabilityContext, Operation},
-    Capability,
-};
-use futures::StreamExt;
+use std::marker::Send;
+
+use crux_core::{capability::Operation, command::StreamBuilder, Command, Request};
+use facet::Facet;
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 
-pub struct WallClock<Ev> {
-    context: CapabilityContext<ClockOperation, Ev>,
-}
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Facet, Serialize, Deserialize)]
+#[repr(C)]
 pub enum ClockOperation {
     Start(u32),
     Stop,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Facet, Serialize, Deserialize)]
+#[repr(C)]
 pub enum ClockOutput {
     Tick,
     Stopped,
@@ -25,52 +23,20 @@ impl Operation for ClockOperation {
     type Output = ClockOutput;
 }
 
-impl<Ev> WallClock<Ev>
+pub fn start<Effect, Event>(
+    interval: u32,
+) -> StreamBuilder<Effect, Event, impl Stream<Item = ClockOutput>>
 where
-    Ev: 'static + Send,
+    Effect: From<Request<ClockOperation>> + Send + 'static,
+    Event: Send + 'static,
 {
-    pub fn new(context: CapabilityContext<ClockOperation, Ev>) -> Self {
-        Self { context }
-    }
-
-    pub fn start(&self, interval: u32, event: Ev)
-    where
-        Ev: Clone,
-    {
-        self.context.spawn({
-            let ctx = self.context.clone();
-
-            async move {
-                let mut subscription = ctx.stream_from_shell(ClockOperation::Start(interval));
-
-                while let Some(ClockOutput::Tick) = subscription.next().await {
-                    ctx.update_app(event.clone());
-                }
-            }
-        });
-    }
-
-    pub fn stop(&self) {
-        self.context.spawn({
-            let ctx = self.context.clone();
-
-            async move {
-                ctx.notify_shell(ClockOperation::Stop).await;
-            }
-        })
-    }
+    Command::stream_from_shell(ClockOperation::Start(interval))
 }
 
-impl<Ev> Capability<Ev> for WallClock<Ev> {
-    type Operation = ClockOperation;
-    type MappedSelf<MappedEv> = WallClock<MappedEv>;
-
-    fn map_event<F, NewEv>(&self, f: F) -> Self::MappedSelf<NewEv>
-    where
-        F: Fn(NewEv) -> Ev + Send + Sync + Copy + 'static,
-        Ev: 'static,
-        NewEv: 'static + Send,
-    {
-        WallClock::new(self.context.map_event(f))
-    }
+pub fn stop<Effect, Event>() -> Command<Effect, Event>
+where
+    Effect: Send + From<crux_core::Request<ClockOperation>> + 'static,
+    Event: Send + 'static,
+{
+    Command::notify_shell(ClockOperation::Stop).build()
 }
