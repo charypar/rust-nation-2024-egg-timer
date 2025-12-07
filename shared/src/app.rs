@@ -310,13 +310,13 @@ mod tests {
         let app = EggTimer;
         let mut model = Model::NotStarted { goal_time: 30 };
 
-        let mut cmd = app.update(Event::Increase, &mut model);
-        cmd.expect_one_effect().expect_render();
+        let mut command = app.update(Event::Increase, &mut model);
+        command.expect_one_effect().expect_render();
 
         assert_eq!(model, Model::NotStarted { goal_time: 40 });
 
-        let mut cmd = app.update(Event::Decrease, &mut model);
-        cmd.expect_one_effect().expect_render();
+        let mut command = app.update(Event::Decrease, &mut model);
+        command.expect_one_effect().expect_render();
 
         assert_eq!(model, Model::NotStarted { goal_time: 30 });
 
@@ -325,8 +325,8 @@ mod tests {
             elapsed_time: 15,
         };
 
-        let mut cmd = app.update(Event::Increase, &mut model);
-        cmd.expect_one_effect().expect_render();
+        let mut command = app.update(Event::Increase, &mut model);
+        command.expect_one_effect().expect_render();
 
         assert_eq!(
             model,
@@ -336,8 +336,8 @@ mod tests {
             }
         );
 
-        let mut cmd = app.update(Event::Decrease, &mut model);
-        cmd.expect_one_effect().expect_render();
+        let mut command = app.update(Event::Decrease, &mut model);
+        command.expect_one_effect().expect_render();
 
         assert_eq!(
             model,
@@ -356,8 +356,8 @@ mod tests {
             elapsed_time: 0,
         };
 
-        let mut cmd = app.update(Event::Tick, &mut model);
-        cmd.expect_one_effect().expect_render();
+        let mut command = app.update(Event::Tick, &mut model);
+        command.expect_one_effect().expect_render();
 
         assert_eq!(
             model,
@@ -372,11 +372,11 @@ mod tests {
             elapsed_time: 29,
         };
 
-        let mut cmd = app.update(Event::Tick, &mut model);
-        let clock_req = cmd.expect_effect().expect_wall_clock();
+        let mut command = app.update(Event::Tick, &mut model);
+        let clock_req = command.expect_effect().expect_wall_clock();
         assert_eq!(clock_req.operation, ClockOperation::Stop);
 
-        cmd.expect_one_effect().expect_render();
+        command.expect_one_effect().expect_render();
 
         assert_eq!(model, Model::Finished { goal_time: 30 });
     }
@@ -390,16 +390,16 @@ mod tests {
             elapsed_time: 15,
         };
 
-        let mut cmd = app.update(Event::Reset, &mut model);
+        let mut command = app.update(Event::Reset, &mut model);
 
-        let clock_req = cmd.expect_effect().expect_wall_clock();
+        let clock_req = command.expect_effect().expect_wall_clock();
         assert_eq!(clock_req.operation, ClockOperation::Stop);
 
-        cmd.expect_one_effect().expect_render();
+        command.expect_one_effect().expect_render();
 
         assert_eq!(model, Model::NotStarted { goal_time: 27 });
 
-        cmd.expect_no_effect_or_events();
+        command.expect_no_effect_or_events();
     }
 
     #[test]
@@ -408,7 +408,7 @@ mod tests {
 
         let mut model = Model::NotStarted { goal_time: 30 };
 
-        let mut cmd = app.update(Event::ToggleRunning, &mut model);
+        let mut command = app.update(Event::ToggleRunning, &mut model);
         assert_eq!(
             model,
             Model::Running {
@@ -417,8 +417,8 @@ mod tests {
             }
         );
 
-        cmd.expect_no_events();
-        let mut clock_req = cmd.expect_effect().expect_wall_clock();
+        command.expect_no_events();
+        let mut clock_req = command.expect_effect().expect_wall_clock();
 
         let ClockOperation::Start(interval) = clock_req.operation else {
             panic!("Expected start operation");
@@ -427,9 +427,9 @@ mod tests {
 
         clock_req.resolve(ClockOutput::Tick).expect("to resolve");
 
-        let event = cmd.expect_one_event();
-        let mut cmd = app.update(event, &mut model);
-        cmd.expect_one_effect().expect_render();
+        let event = command.expect_one_event();
+        let mut command = app.update(event, &mut model);
+        command.expect_one_effect().expect_render();
 
         assert_eq!(
             model,
@@ -449,7 +449,7 @@ mod tests {
             elapsed_time: 15,
         };
 
-        let mut cmd = app.update(Event::ToggleRunning, &mut model);
+        let mut command = app.update(Event::ToggleRunning, &mut model);
         assert_eq!(
             model,
             Model::Paused {
@@ -458,16 +458,16 @@ mod tests {
             }
         );
 
-        cmd.expect_no_events();
+        command.expect_no_events();
 
-        let clock_req = cmd.expect_effect().expect_wall_clock();
-        cmd.expect_effect().expect_render();
+        let clock_req = command.expect_effect().expect_wall_clock();
+        command.expect_effect().expect_render();
 
         let ClockOperation::Stop = clock_req.operation else {
             panic!("Expected stop operation");
         };
 
-        cmd.expect_done();
+        command.expect_done();
     }
 
     #[test]
@@ -479,17 +479,17 @@ mod tests {
             elapsed_time: 29,
         };
 
-        let mut cmd = app.update(Event::Tick, &mut model);
+        let mut command = app.update(Event::Tick, &mut model);
         assert_eq!(model, Model::Finished { goal_time: 30 });
 
-        cmd.expect_no_events();
-        let clock_req = cmd.expect_effect().expect_wall_clock();
+        command.expect_no_events();
+        let clock_req = command.expect_effect().expect_wall_clock();
 
         let ClockOperation::Stop = clock_req.operation else {
             panic!("Expected stop operation");
         };
 
-        cmd.expect_one_effect().expect_render();
+        command.expect_one_effect().expect_render();
     }
 
     #[test]
@@ -501,17 +501,17 @@ mod tests {
             elapsed_time: 15,
         };
 
-        let mut cmd = app.update(Event::Reset, &mut model);
+        let mut command = app.update(Event::Reset, &mut model);
         assert_eq!(model, Model::NotStarted { goal_time: 30 });
 
-        cmd.expect_no_events();
-        let clock_req = cmd.expect_effect().expect_wall_clock();
+        command.expect_no_events();
+        let clock_req = command.expect_effect().expect_wall_clock();
 
         let ClockOperation::Stop = clock_req.operation else {
             panic!("Expected stop operation");
         };
 
-        cmd.expect_one_effect().expect_render();
-        cmd.expect_done();
+        command.expect_one_effect().expect_render();
+        command.expect_done();
     }
 }

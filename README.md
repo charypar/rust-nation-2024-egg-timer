@@ -49,3 +49,8 @@ To step through the demo, check out the commits on the `wip` branch, one by one.
 except for the very last one, which links the UI to the core.
 
 Every step of the way, tests of the `shared` crate verify that that the changes made are working.
+
+### rust-ldn-2025 branch
+
+An update for Rust LDN meetup, to demonstrate the Command API and new testing helpers, and the improvements in DX. Builds
+on the `wip` branch, but doesn't step through work as much.
