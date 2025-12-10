@@ -1,24 +1,24 @@
 let interval: number;
-let subscriptionId: number[] | null = null;
+let subscriptionId: number | null = null;
 
 export function start(
-  effectId: number[],
-  intervalSec: number,
-  callback: () => void,
+    effectId: number,
+    intervalSec: number,
+    callback: () => void,
 ) {
-  console.log("Starting clock");
+    console.log("Starting clock", effectId);
 
-  subscriptionId = effectId;
-  interval = setInterval(callback, intervalSec * 1000);
+    subscriptionId = effectId;
+    interval = setInterval(callback, intervalSec * 1000);
 }
 
-export function stop(): number[] | null {
-  console.log("Stopping clock", subscriptionId);
+export function stop(): number | null {
+    console.log("Stopping clock", subscriptionId);
 
-  clearInterval(interval);
+    clearInterval(interval);
 
-  const id = subscriptionId;
-  subscriptionId = null;
+    const id = subscriptionId;
+    subscriptionId = null;
 
-  return id;
+    return id;
 }

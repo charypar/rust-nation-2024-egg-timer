@@ -1,36 +1,38 @@
 {
-  "name": "egg-timer",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "npm run wasm:build && vite",
-    "build": "npm run wasm:build && tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
-    "wasm:build": "cd ../shared && wasm-pack build --target web"
-  },
-  "dependencies": {
-    "@tailwindcss/typography": "^0.5.10",
-    "clsx": "^2.1.0",
-    "daisyui": "^4.7.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "shared": "link:../shared/pkg",
-    "shared_types": "link:../shared_types/generated/typescript",
-    "tailwindcss": "^3.4.1"
-  },
-  "devDependencies": {
-    "@types/react": "^18.2.64",
-    "@types/react-dom": "^18.2.21",
-    "@typescript-eslint/eslint-plugin": "^7.1.1",
-    "@typescript-eslint/parser": "^7.1.1",
-    "@vitejs/plugin-react": "^4.2.1",
-    "eslint": "^8.57.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.5",
-    "typescript": "^5.2.2",
-    "vite": "^5.1.6",
-    "vite-plugin-commonjs": "^0.10.1"
-  }
+    "name": "egg-timer",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "npm run wasm:build && vite",
+        "build": "npm run wasm:build && tsc && vite build",
+        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "preview": "vite preview",
+        "wasm:build": "cd ../shared && wasm-pack build --target web"
+    },
+    "dependencies": {
+        "@tailwindcss/typography": "^0.5.10",
+        "clsx": "^2.1.0",
+        "daisyui": "^4.7.3",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "shared": "file:generated/pkg",
+        "shared_types": "file:generated/types",
+        "tailwindcss": "^3.4.1"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.64",
+        "@types/react-dom": "^18.2.21",
+        "@typescript-eslint/eslint-plugin": "^7.1.1",
+        "@typescript-eslint/parser": "^7.1.1",
+        "@vitejs/plugin-react": "^4.2.1",
+        "eslint": "^8.57.0",
+        "eslint-plugin-react-hooks": "^4.6.0",
+        "eslint-plugin-react-refresh": "^0.4.5",
+        "typescript": "^5.2.2",
+        "vite": "^5.1.6",
+        "vite-plugin-commonjs": "^0.10.1",
+        "vite-plugin-static-copy": "^3.1.4",
+        "vite-plugin-wasm": "^3.5.0"
+    }
 }

@@ -4,10 +4,14 @@ import commonjs from "vite-plugin-commonjs";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), commonjs()],
-  server: {
-    fs: {
-      allow: [".."],
+    assetsInclude: ["**/*.wasm"], // tell Vite WASM is an asset
+    optimizeDeps: {
+        exclude: ["shared"], // prevent Vite from prebundling it
     },
-  },
+    plugins: [react(), commonjs()],
+    server: {
+        fs: {
+            allow: [".."],
+        },
+    },
 });
